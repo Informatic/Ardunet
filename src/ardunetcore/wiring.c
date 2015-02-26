@@ -1,9 +1,6 @@
-extern "C" {
-    #include "ardunetcore/wiring.h"
-    #include "ardunetcore/pwm.h"
-}
+#include "ardunetcore/wiring.h"
+#include "ardunetcore/pwm.h"
 
-#include "ardunetcore/HardwareSerial.h"
 
 int gpio_pin_register[16] = {PERIPHS_IO_MUX_GPIO0_U,
                              PERIPHS_IO_MUX_U0TXD_U,
@@ -28,7 +25,9 @@ LOCAL void (*callbacks[16])(void);
 
 LOCAL void interruptHandler() {
     uint32_t gpio_mask = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
-    for (int i=0 ; i<16 ; i++) {
+    int i;
+
+    for (i = 0 ; i<16 ; i++) {
         if ((0x1<<i) & gpio_mask) {
             if (callbacks[i] != NULL) {
                 (*callbacks[i])();
@@ -39,14 +38,13 @@ LOCAL void interruptHandler() {
 }
 
 void ICACHE_FLASH_ATTR init(void) {
-    for (int i=0 ; i<16 ; i++) {
+    int i;
+
+    for (i = 0 ; i<16 ; i++) {
         detachInterrupt(i);
     }
     _xt_isr_attach(ETS_GPIO_INUM, (_xt_isr)interruptHandler);
     _xt_isr_unmask(1<<ETS_GPIO_INUM);
-    
-    //uint8_t duty[PWM_CHANNEL] = {0,0,0};
-    //pwm_init(100, duty);
 }
 
 void ICACHE_FLASH_ATTR pinMode(uint8_t pin, uint8_t mode) {

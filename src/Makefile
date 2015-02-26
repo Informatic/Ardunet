@@ -1,144 +1,166 @@
-#############################################################
-# Required variables for each makefile
-# Discard this section from all parent makefiles
-# Expected variables (with automatic defaults):
-#   CSRCS (all "C" files in the dir)
-#   SUBDIRS (all subdirs with a Makefile)
-#   GEN_LIBS - list of libs to be generated ()
-#   GEN_IMAGES - list of object file images to be generated ()
-#   GEN_BINS - list of binaries to be generated ()
-#   COMPONENTS_xxx - a list of libs/objs in the form
-#     subdir/lib to be extracted and rolled up into
-#     a generated lib/image xxx.a ()
+# tnx to mamalala
+# Changelog
+# Changed the variables to include the header file directory
+# Added global var for the XTENSA tool root
 #
-TARGET = eagle
-#FLAVOR = release
-FLAVOR = debug
+# This make file still needs some work.
+#
+# Updated for SDK 0.9.2
+#
+# Output directors to store intermediate compiled files
+# relative to the project directory
+ROOT		= $(HOME)/tmp/esp-shit/opt/Espressif
+BUILD_BASE	= build
+FW_BASE		= firmware
 
-#EXTRA_CCFLAGS += -u
+# Base directory for the compiler
+XTENSA_TOOLS_ROOT ?= $(ROOT)/crosstool-NG/builds/xtensa-lx106-elf/bin
 
-ifndef PDIR # {
-GEN_IMAGES= eagle.app.v6.out
-GEN_BINS= eagle.app.v6.bin
-SPECIAL_MKTARGETS=$(APP_MKTARGETS)
-SUBDIRS=    \
-	user	\
-	sketch	\
-	ardunetcore
+# base directory of the ESP8266 SDK package, absolute
+SDK_BASE	?= $(ROOT)/ESP8266_SDK
 
-endif # } PDIR
+#Esptool.py path and port
+ESPTOOL		?= esptool.py
+ESPPORT		?= /dev/ttyUSB0
+FLASH_COOLDOWN ?= 1
 
-APPDIR = .
-LDDIR = ../ld
+# name for the target project
+TARGET		= app
 
-CCFLAGS += -Os
+# $(SDK_BASE)/include/espressif \
 
-TARGET_LDFLAGS =		\
-	-nostdlib		\
-	-Wl,-EL \
-	--longcalls \
-	--text-section-literals
+# which modules (subdirectories) of the project to include in compiling
+MODULES		= driver user sketch ardunetcore
+EXTRA_INCDIR    = include ../include/espressif
 
-ifeq ($(FLAVOR),debug)
-    TARGET_LDFLAGS += -g -O2
+# libraries used in this project, mainly provided by the SDK
+LIBS		= c gcc hal phy pp net80211 wpa main freertos lwip udhcp
+
+# compiler flags using during compilation of source files
+CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
+CXXFLAGS	= $(CFLAGS) -fno-rtti -fno-exceptions
+
+# linker flags used to generate the main object file
+LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static -Wl,--allow-multiple-definition
+
+# linker script used for the above linkier step
+LD_SCRIPT	= eagle.app.v6.ld
+
+# various paths from the SDK used in this project
+SDK_LIBDIR	= lib
+SDK_LDDIR	= ld
+SDK_INCDIR	= include include/json include/freertos \
+			  include/lwip include/lwip/ipv4 include/lwip/ipv6 \
+			  include/udhcp include/ssl extra_include
+
+# we create two different files for uploading into the flash
+# these are the names and options to generate them
+FW_FILE_1	= 0x00000
+FW_FILE_1_ARGS	= -bo $@ -bs .text -bs .data -bs .rodata -bc -ec
+FW_FILE_2	= 0x40000
+FW_FILE_2_ARGS	= -es .irom0.text $@ -ec
+
+# select which tools to use as compiler, librarian and linker
+CC		:= $(XTENSA_TOOLS_ROOT)/xtensa-lx106-elf-gcc
+CXX		:= $(XTENSA_TOOLS_ROOT)/xtensa-lx106-elf-g++
+AR		:= $(XTENSA_TOOLS_ROOT)/xtensa-lx106-elf-ar
+LD		:= $(XTENSA_TOOLS_ROOT)/xtensa-lx106-elf-gcc
+
+
+
+####
+#### no user configurable options below here
+####
+FW_TOOL		?= $(XTENSA_TOOLS_ROOT)/esptool
+SRC_DIR		:= $(MODULES)
+BUILD_DIR	:= $(addprefix $(BUILD_BASE)/,$(MODULES))
+
+SDK_LIBDIR	:= $(addprefix $(SDK_BASE)/,$(SDK_LIBDIR))
+SDK_INCDIR	:= $(addprefix -I$(SDK_BASE)/,$(SDK_INCDIR))
+
+SRC		:= $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.c*))
+C_OBJ		:= $(patsubst %.c,%.o,$(SRC))
+CXX_OBJ		:= $(patsubst %.cpp,%.o,$(C_OBJ))
+OBJ		:= $(patsubst %.o,$(BUILD_BASE)/%.o,$(CXX_OBJ))
+LIBS		:= $(addprefix -l,$(LIBS))
+APP_AR		:= $(addprefix $(BUILD_BASE)/,$(TARGET)_app.a)
+TARGET_OUT	:= $(addprefix $(BUILD_BASE)/,$(TARGET).out)
+
+LD_SCRIPT	:= $(addprefix -T$(SDK_BASE)/$(SDK_LDDIR)/,$(LD_SCRIPT))
+
+INCDIR	:= $(addprefix -I,$(SRC_DIR))
+EXTRA_INCDIR	:= $(addprefix -I,$(EXTRA_INCDIR))
+MODULE_INCDIR	:= $(addsuffix /include,$(INCDIR))
+
+FW_FILE_1	:= $(addprefix $(FW_BASE)/,$(FW_FILE_1).bin)
+FW_FILE_2	:= $(addprefix $(FW_BASE)/,$(FW_FILE_2).bin)
+
+V ?= $(VERBOSE)
+ifeq ("$(V)","1")
+Q :=
+vecho := @true
+else
+Q := @
+vecho := @echo
 endif
 
-ifeq ($(FLAVOR),release)
-    TARGET_LDFLAGS += -g -O0
-endif
+vpath %.c $(SRC_DIR)
+vpath %.cpp $(SRC_DIR)
 
-LD_FILE = $(LDDIR)/eagle.app.v6.ld
+define compile-objects
+$1/%.o: %.c
+	$(vecho) "CC $$<"
+	$(Q) $(CC) $(INCDIR) $(MODULE_INCDIR) $(EXTRA_INCDIR) $(SDK_INCDIR) $(CFLAGS)  -c $$< -o $$@
+$1/%.o: %.cpp
+	$(vecho) "C+ $$<"
+	$(Q) $(CXX) $(INCDIR) $(MODULE_INCDIR) $(EXTRA_INCDIR) $(SDK_INCDIR) $(CXXFLAGS)  -c $$< -o $$@
+endef
 
-ifeq ($(APP), 1)
-	LD_FILE = $(LDDIR)/eagle.app.v6.app1.ld
-endif
+.PHONY: all checkdirs clean
 
-ifeq ($(APP), 2)
-	LD_FILE = $(LDDIR)/eagle.app.v6.app2.ld
-endif
+all: checkdirs $(TARGET_OUT) $(FW_FILE_1) $(FW_FILE_2)
 
-COMPONENTS_eagle.app.v6 = \
-	user/libuser.a	\
-	sketch/libsketch.a	\
-	ardunetcore/libardunet.a
+$(FW_FILE_1): $(TARGET_OUT)
+	$(vecho) "FW $@"
+	$(Q) $(FW_TOOL) -eo $(TARGET_OUT) $(FW_FILE_1_ARGS)
 
-LINKFLAGS_eagle.app.v6 = \
-	-L../lib        \
-	-nostdlib	\
-    -T$(LD_FILE)   \
-	-Wl,--no-check-sections	\
-    -u call_user_start	\
-	-Wl,-static						\
-	-Wl,--start-group					\
-	-lgcc					\
-	-lhal					\
-	-lphy	\
-	-lpp	\
-	-lnet80211	\
-	-lwpa	\
-	-lmain	\
-	-lfreertos	\
-	-llwip	\
-	-ludhcp	\
-	$(DEP_LIBS_eagle.app.v6)					\
-	-Wl,--end-group
+$(FW_FILE_2): $(TARGET_OUT)
+	$(vecho) "FW $@"
+	$(Q) $(FW_TOOL) -eo $(TARGET_OUT) $(FW_FILE_2_ARGS)
 
-DEPENDS_eagle.app.v6 = \
-                $(LD_FILE) \
-                $(LDDIR)/eagle.rom.addr.v6.ld
+$(TARGET_OUT): $(APP_AR)
+	$(vecho) "LD $@"
+	$(Q) $(LD) -L$(SDK_LIBDIR) $(LD_SCRIPT) $(LDFLAGS) -Wl,--start-group $(LIBS) $(APP_AR) -Wl,--end-group -o $@
 
-#############################################################
-# Configuration i.e. compile options etc.
-# Target specific stuff (defines etc.) goes in here!
-# Generally values applying to a tree are captured in the
-#   makefile at its root level - these are then overridden
-#   for a subtree within the makefile rooted therein
-#
+$(APP_AR): $(OBJ)
+	$(vecho) "AR $@"
+	$(Q) $(AR) cru $@ $^
 
-#UNIVERSAL_TARGET_DEFINES =		\
+checkdirs: $(BUILD_DIR) $(FW_BASE)
 
-# Other potential configuration flags include:
-#	-DTXRX_TXBUF_DEBUG
-#	-DTXRX_RXBUF_DEBUG
-#	-DWLAN_CONFIG_CCX
-CONFIGURATION_DEFINES =	-D__ets__ \
-			-DICACHE_FLASH
+$(BUILD_DIR):
+	$(Q) mkdir -p $@
 
-DEFINES +=				\
-	$(UNIVERSAL_TARGET_DEFINES)	\
-	$(CONFIGURATION_DEFINES)
+firmware:
+	$(Q) mkdir -p $@
 
-DDEFINES +=				\
-	$(UNIVERSAL_TARGET_DEFINES)	\
-	$(CONFIGURATION_DEFINES)
+flash: firmware/0x00000.bin firmware/0x40000.bin
+	-$(ESPTOOL) --port $(ESPPORT) write_flash 0x00000 firmware/0x00000.bin
+	sleep $(FLASH_COOLDOWN)
+	-$(ESPTOOL) --port $(ESPPORT) write_flash 0x40000 firmware/0x40000.bin
+
+clean:
+	$(Q) rm -f $(APP_AR)
+	$(Q) rm -f $(TARGET_OUT)
+	$(Q) rm -rf $(BUILD_DIR)
+	$(Q) rm -rf $(BUILD_BASE)
 
 
-#############################################################
-# Recursion Magic - Don't touch this!!
-#
-# Each subtree potentially has an include directory
-#   corresponding to the common APIs applicable to modules
-#   rooted at that subtree. Accordingly, the INCLUDE PATH
-#   of a module can only contain the include directories up
-#   its parent path, and not its siblings
-#
-# Required for each makefile to inherit from the parent
-#
+	$(Q) rm -f $(FW_FILE_1)
+	$(Q) rm -f $(FW_FILE_2)
+	$(Q) rm -rf $(FW_BASE)
 
-INCLUDES := $(INCLUDES) -I $(PDIR)include
-INCLUDES += -I ./
-PDIR := ../$(PDIR)
-sinclude $(PDIR)Makefile
+serial:
+	python pyser.py $(ESPPORT)
 
-#########################################################################
-#
-#  generate bin file
-#
-
-$(BINODIR)/%.bin: $(IMAGEODIR)/%.out
-	@mkdir -p $(BINODIR)
-	$(OBJCOPY) -O binary $< $@
-
-.PHONY: FORCE
-FORCE:
-
+$(foreach bdir,$(BUILD_DIR),$(eval $(call compile-objects,$(bdir))))
