@@ -1,0 +1,12 @@
+ * Integrate existing Arduino code:
+    - Stream
+    - IPAddress
+    - Print
+    - WMath
+ * Integrate flash FS library (spiffs or Sprite_TM espfs)
+ * Try to replicate some existing API
+ * Implement HTTPClient
+ * Rewrite HTTPServer
+ * Make it possible to disable SDK debug messages on UART
+ * Documentation
+ * Integrate into some generic builder, eg. platformio
