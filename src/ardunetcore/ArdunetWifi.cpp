@@ -1,9 +1,6 @@
-
 #include "ardunetcore/ArdunetWifi.h"
 
-ICACHE_FLASH_ATTR ArdunetWifi::ArdunetWifi() {
-    
-}
+ICACHE_FLASH_ATTR ArdunetWifi::ArdunetWifi() { }
 
 void ICACHE_FLASH_ATTR ArdunetWifi::scan(scan_done_cb_t f) {
     wifi_station_scan((scan_config*)NULL, f);
@@ -36,7 +33,7 @@ void ICACHE_FLASH_ATTR ArdunetWifi::beginHost(const char*ssid, const char*pwd, i
     portENTER_CRITICAL();
     wifi_softap_set_config(&apConfig);
     portEXIT_CRITICAL();
-    
+
     /*struct dhcp_info *pdhcp_info = NULL;
     pdhcp_info = (struct dhcp_info *)zalloc(sizeof(struct dhcp_info));
     pdhcp_info->start_ip = ipaddr_addr("192.168.0.100");
@@ -49,61 +46,65 @@ void ICACHE_FLASH_ATTR ArdunetWifi::beginHost(const char*ssid, const char*pwd, i
     pdhcp_info->min_lease_sec = 60;
     dhcp_set_info(pdhcp_info);
     free(pdhcp_info);*/
-    
+
     udhcpd_start();
 }
 
 void ICACHE_FLASH_ATTR ArdunetWifi::setDeviceIP(const char*ip) {
     if (getMode()==WIFI_MODE_HOST) return;
-    
+
     struct ip_info pTempIp;
     wifi_get_ip_info(WIFI_IP_DEVICE, &pTempIp);
-    
+
     pTempIp.ip.addr = ipaddr_addr(ip);
     wifi_set_ip_info(WIFI_IP_DEVICE, &pTempIp);
 }
 
 void ICACHE_FLASH_ATTR ArdunetWifi::setHostIP(const char*ip) {
     if (getMode()==WIFI_MODE_DEVICE) return;
-    
+
     struct ip_info pTempIp;
     wifi_get_ip_info(WIFI_IP_HOST, &pTempIp);
-    
+
     pTempIp.ip.addr = ipaddr_addr(ip);
     wifi_set_ip_info(WIFI_IP_HOST, &pTempIp);
 }
 
 void ICACHE_FLASH_ATTR ArdunetWifi::setHostIP(const char*ip, const char*gateway, const char*netmask) {
     if (getMode()==WIFI_MODE_DEVICE) return;
-    
+
     struct ip_info pTempIp;
     wifi_get_ip_info(WIFI_IP_HOST, &pTempIp);
-    
+
     pTempIp.ip.addr = ipaddr_addr(ip);
     pTempIp.gw.addr = ipaddr_addr(gateway);
     pTempIp.netmask.addr = ipaddr_addr(netmask);
-    
+
     wifi_set_ip_info(WIFI_IP_HOST, &pTempIp);
 }
 
-char* ICACHE_FLASH_ATTR ArdunetWifi::getDeviceIP() {
-    char *ipStr;
-    if (getMode()==WIFI_MODE_HOST) return ipStr;
-    
+String ICACHE_FLASH_ATTR ArdunetWifi::getDeviceIP() {
+    char ipStr[16];
+    String outStr;
+    if (getMode()==WIFI_MODE_HOST) return outStr;
+
     struct ip_info pTempIp;
     wifi_get_ip_info(WIFI_IP_DEVICE, &pTempIp);
     sprintf(ipStr, "%d.%d.%d.%d", IP2STR(&pTempIp.ip));
-    return ipStr;
+    outStr = String(ipStr);
+    return outStr;
 }
 
-char* ICACHE_FLASH_ATTR ArdunetWifi::getHostIP() {
-    char *ipStr;
-    if (getMode()==WIFI_MODE_DEVICE) return ipStr;
-    
+String ICACHE_FLASH_ATTR ArdunetWifi::getHostIP() {
+    char ipStr[16];
+    String outStr;
+    if (getMode()==WIFI_MODE_DEVICE) return outStr;
+
     struct ip_info pTempIp;
     wifi_get_ip_info(WIFI_IP_HOST, &pTempIp);
     sprintf(ipStr, "%d.%d.%d.%d", IP2STR(&pTempIp.ip));
-    return ipStr;
+    outStr = String(ipStr);
+    return outStr;
 }
 
 void ICACHE_FLASH_ATTR ArdunetWifi::connectToHost(const char*ssid, const char*pwd) {
@@ -111,8 +112,8 @@ void ICACHE_FLASH_ATTR ArdunetWifi::connectToHost(const char*ssid, const char*pw
 
     bzero(&stationConfig, sizeof(struct station_config));
 
-    sprintf((char*)stationConfig.ssid, ssid);
-    sprintf((char*)stationConfig.password, pwd);
+    strncpy((char*)stationConfig.ssid, ssid, 32);
+    strncpy((char*)stationConfig.password, pwd, 64);
 
     wifi_station_disconnect();
     portENTER_CRITICAL();
@@ -126,7 +127,7 @@ void ICACHE_FLASH_ATTR ArdunetWifi::disconnectFromHost() {
 }
 
 void ICACHE_FLASH_ATTR ArdunetWifi::waitIP() {
-    while (wifi_station_get_connect_status()!=STATION_GOT_IP) {
+    while (wifi_station_get_connect_status() != STATION_GOT_IP) {
         os_delay_us(10);
     }
 }

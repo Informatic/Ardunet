@@ -7,6 +7,8 @@ extern "C" {
     #include "freertos/portmacro.h"
 }
 
+#include "WString.h"
+
 #define WIFI_MODE_NULL          NULL_MODE
 #define WIFI_MODE_DEVICE        STATION_MODE
 #define WIFI_MODE_HOST          SOFTAP_MODE
@@ -32,8 +34,8 @@ class ArdunetWifi {
         void setDeviceIP(const char*ip);
         void setHostIP(const char*ip);
         void setHostIP(const char*ip, const char*gateway, const char*netmask);
-        char *getDeviceIP();
-        char *getHostIP();
+        String getDeviceIP();
+        String getHostIP();
         void connectToHost(const char*ssid, const char*pwd);
         void disconnectFromHost();
         void waitIP();
